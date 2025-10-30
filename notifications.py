@@ -1,5 +1,5 @@
 import mysql.connector
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 import time as t  # <- renamed to avoid conflict
 import requests
 import smtplib
@@ -91,7 +91,6 @@ def send_email(subject, message, email_ids):
     except Exception as e:
         print("❌ Email failed:", e)
 
-# fetch phone number and email to send sms and email
 def get_contact_info(device_id):
     try:
         conn = mysql.connector.connect(**db_config)
@@ -141,36 +140,47 @@ def get_contact_info(device_id):
         if 'conn' in locals() and conn.is_connected():
             conn.close()
 
+# Track second notifications in memory
+second_notification_sent = {}  # alarm_id -> True
+
+def safe_time(t_value):
+    """Ensure the value is a datetime.time object"""
+    if isinstance(t_value, time):
+        return t_value
+    try:
+        return (datetime.min + t_value).time()
+    except:
+        return time(0, 0, 0)
+
 def check_and_notify():
     try:
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
-            SELECT ID, DEVICE_ID, PARAMETER_ID, ALARM_DATE, ALARM_TIME, SMS_DATE, EMAIL_DATE, SMS_TIME, EMAIL_TIME
+            SELECT ID, DEVICE_ID, PARAMETER_ID, ALARM_DATE, ALARM_TIME, SMS_DATE,SMS_TIME, EMAIL_DATE
             FROM iot_api_devicealarmlog
             WHERE IS_ACTIVE=1
         """)
         alarms = cursor.fetchall()
         if not alarms:
-            print("✅ No new alarms to notify.")
+            print("✅ No alarms found.")
             return
 
-        print("📊 Alarm Table Status:")
-        print("ID | Device | Param | Raised Time | SMS | Email")
-        print("-" * 80)
+        now = datetime.now(TZ)
 
         for alarm in alarms:
             alarm_id = alarm["ID"]
             devid = alarm["DEVICE_ID"]
             alarm_date = alarm["ALARM_DATE"]
-            alarm_time = alarm["ALARM_TIME"]
-            fixed_time = (datetime.min + alarm_time).time()
-            raised_time = TZ.localize(datetime.combine(alarm_date, fixed_time))  # Singapore timezone
-            now = datetime.now(TZ)
+            alarm_time = safe_time(alarm["ALARM_TIME"])
+            raised_time = TZ.localize(datetime.combine(alarm_date, alarm_time))
             diff_seconds = (now - raised_time).total_seconds()
-            print(f"⏱ Alarm {alarm_id}: diff_seconds={diff_seconds}")
 
-            if diff_seconds >= 60:  # only process alarms older than 1 min
+            first_sms_done = alarm["SMS_DATE"] is not None
+            second_sms_done = second_notification_sent.get(alarm_id, False)
+
+            # -------- FIRST NOTIFICATION --------
+            if not first_sms_done and diff_seconds >= 60:
                 cursor.execute("SELECT device_name FROM master_device WHERE device_id=%s", (devid,))
                 row = cursor.fetchone()
                 devnm = row["device_name"] if row else f"Device-{devid}"
@@ -210,57 +220,77 @@ def check_and_notify():
                 message = build_message(ntf_typ, devnm)
                 phones, emails = get_contact_info(devid)
 
-                # ----------- SECOND NOTIFICATION LOGIC -----------
-                # Existing SMS/Email timestamps
-                sms_time = None
-                email_time = None
-                if alarm["SMS_DATE"] and alarm.get("SMS_TIME"):
-                    sms_time = TZ.localize(datetime.combine(alarm["SMS_DATE"], alarm["SMS_TIME"]))
-                if alarm["EMAIL_DATE"] and alarm.get("EMAIL_TIME"):
-                    email_time = TZ.localize(datetime.combine(alarm["EMAIL_DATE"], alarm["EMAIL_TIME"]))
+                for phone in phones:
+                    send_sms(phone, message)
+                send_email("IoT Alarm Notification", message, emails)
 
-                # Determine if notifications should be sent
-                should_notify_sms = (sms_time is None) or ((now - sms_time).total_seconds() >= 6*3600)  # 6 hours
-                should_notify_email = (email_time is None) or ((now - email_time).total_seconds() >= 6*3600)
-
-                # Skip if neither notification is due
-                if not should_notify_sms and not should_notify_email:
-                    print(f"⏳ Alarm {alarm_id} notifications not due yet.")
-                    continue
-
-                # ----------- SEND NOTIFICATIONS -----------
-                if should_notify_sms:
-                    for phone in phones:
-                        send_sms(phone, message)
-                    print(f"📨 SMS notification sent for Alarm {alarm_id}")
-
-                if should_notify_email:
-                    send_email("IoT Alarm Notification", message, emails)
-                    print(f"📧 Email notification sent for Alarm {alarm_id}")
-
-                # ----------- UPDATE ALARM LOG -----------
                 now_ts = datetime.now(TZ)
                 cursor.execute("""
                     UPDATE iot_api_devicealarmlog
                     SET SMS_DATE=%s, SMS_TIME=%s, EMAIL_DATE=%s, EMAIL_TIME=%s
                     WHERE ID=%s
-                """, (
-                    now_ts.date() if should_notify_sms else alarm["SMS_DATE"],
-                    now_ts.time() if should_notify_sms else alarm.get("SMS_TIME"),
-                    now_ts.date() if should_notify_email else alarm["EMAIL_DATE"],
-                    now_ts.time() if should_notify_email else alarm.get("EMAIL_TIME"),
-                    alarm["ID"]
-                ))
+                """, (now_ts.date(), now_ts.time(), now_ts.date(), now_ts.time(), alarm_id))
                 conn.commit()
+                print(f"✅ First notification sent for alarm {alarm_id}")
+
+            # -------- SECOND NOTIFICATION --------
+            elif first_sms_done and not second_sms_done:
+                first_sms_dt = datetime.combine(alarm["SMS_DATE"], safe_time(alarm["SMS_TIME"]))
+                first_sms_dt = TZ.localize(first_sms_dt)
+                diff_hours = (now - first_sms_dt).total_seconds() / 3600
+                if diff_hours >= 6:
+                    cursor.execute("SELECT device_name FROM master_device WHERE device_id=%s", (devid,))
+                    row = cursor.fetchone()
+                    devnm = row["device_name"] if row else f"Device-{devid}"
+
+                    cursor.execute("""
+                        SELECT 
+                            MP.UPPER_THRESHOLD,
+                            MP.LOWER_THRESHOLD,
+                            DRL.READING AS CURRENT_READING
+                        FROM master_device MD
+                        LEFT JOIN iot_api_devicesensorlink DSL ON DSL.DEVICE_ID = MD.DEVICE_ID
+                        LEFT JOIN iot_api_sensorparameterlink SPL ON SPL.SENSOR_ID = DSL.SENSOR_ID
+                        LEFT JOIN iot_api_masterparameter MP ON MP.PARAMETER_ID = SPL.PARAMETER_ID
+                        LEFT JOIN device_reading_log DRL ON DRL.DEVICE_ID = MD.DEVICE_ID
+                        WHERE MD.DEVICE_ID = %s
+                        ORDER BY DRL.READING_DATE DESC, DRL.READING_TIME DESC
+                        LIMIT 1
+                    """, (devid,))
+                    reading_row = cursor.fetchone()
+                    if not reading_row:
+                        continue
+
+                    upth = reading_row["UPPER_THRESHOLD"]
+                    lowth = reading_row["LOWER_THRESHOLD"]
+                    currreading = reading_row["CURRENT_READING"]
+
+                    print(f"Device {devnm} [Reminder]: Lower={lowth}, Upper={upth}, Current={currreading}")
+
+                    if currreading < lowth:
+                        ntf_typ = 1
+                    elif currreading > upth:
+                        ntf_typ = 2
+                    else:
+                        ntf_typ = 7
+
+                    message = build_message(ntf_typ, devnm)
+                    phones, emails = get_contact_info(devid)
+
+                    for phone in phones:
+                        send_sms(phone, message)
+                    send_email("IoT Alarm Notification - Reminder", message, emails)
+                    second_notification_sent[alarm_id] = True
+                    print(f"✅ Second notification sent for alarm {alarm_id}")
 
         cursor.close()
         conn.close()
+
     except Exception as e:
         print("❌ Error in check_and_notify:", e)
 
 if __name__ == "__main__":
     while True:
         check_and_notify()
-        print("⏳ Waiting 1 minutes for next check...")
-        t.sleep(1 * 60)  # 5 minutes interval
-
+        print("⏳ Waiting 3 minutes for next check...")
+        t.sleep(3* 60)
