@@ -290,7 +290,7 @@ def check_and_notify():
         print("❌ Error in check_and_notify:", e)
 
 
-if _name_ == "_main_":
+if __name__ == "_main_":
     print("🚀 Starting notification check...")
     check_and_notify()
     print("✅ Notification check complete. Exiting now.")
@@ -300,4 +300,5 @@ if _name_ == "_main_":
 #         check_and_notify()
 #         print("⏳ Waiting 3 minutes for next check...")
 #         t.sleep(3* 60)
+
 
