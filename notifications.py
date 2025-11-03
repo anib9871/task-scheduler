@@ -289,8 +289,15 @@ def check_and_notify():
     except Exception as e:
         print("❌ Error in check_and_notify:", e)
 
-if __name__ == "__main__":
-    while True:
-        check_and_notify()
-        print("⏳ Waiting 3 minutes for next check...")
-        t.sleep(3* 60)
+
+if _name_ == "_main_":
+    print("🚀 Starting notification check...")
+    check_and_notify()
+    print("✅ Notification check complete. Exiting now.")
+
+# if __name__ == "__main__":
+#     while True:
+#         check_and_notify()
+#         print("⏳ Waiting 3 minutes for next check...")
+#         t.sleep(3* 60)
+
