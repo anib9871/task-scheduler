@@ -204,9 +204,14 @@ def check_and_notify():
                     print(f"⚠️ No reading found for device {devnm}")
                     continue
 
+                currreading = reading_row["CURRENT_READING"]                
+                # ✅ Skip if reading is None
+                if currreading is None:
+                    print(f"⚠️ Skipping device {devnm} as current reading is NULL.")
+                    continue
+
                 upth = reading_row["UPPER_THRESHOLD"]
                 lowth = reading_row["LOWER_THRESHOLD"]
-                currreading = reading_row["CURRENT_READING"]
 
                 print(f"Device {devnm}: Lower={lowth}, Upper={upth}, Current={currreading}")
 
@@ -261,9 +266,14 @@ def check_and_notify():
                     if not reading_row:
                         continue
 
+                    currreading = reading_row["CURRENT_READING"]
+                    
+                    # ✅ Skip if reading is None
+                    if currreading is None:
+                        print(f"⚠️ Skipping device {devnm} as current reading is NULL.")
+                        continue
                     upth = reading_row["UPPER_THRESHOLD"]
                     lowth = reading_row["LOWER_THRESHOLD"]
-                    currreading = reading_row["CURRENT_READING"]
 
                     print(f"Device {devnm} [Reminder]: Lower={lowth}, Upper={upth}, Current={currreading}")
 
@@ -300,6 +310,3 @@ if __name__ == "__main__":
 #         check_and_notify()
 #         print("⏳ Waiting 3 minutes for next check...")
 #         t.sleep(3* 60)
-
-
-
