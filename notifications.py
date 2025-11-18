@@ -10,7 +10,7 @@ devid_for_sms = None
 phone_numbers=""
 email_ids=""
 
-#================== DATABASE CONFIG ==================
+# ================== DATABASE CONFIG ==================
 db_config = {
     "host": "switchback.proxy.rlwy.net",
     "user": "root",
@@ -340,4 +340,5 @@ if __name__ == "__main__":
         print("Starting Cron on local")
         check_and_notify()
         print("Done. Exting")
+
 
