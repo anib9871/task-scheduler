@@ -1,5 +1,5 @@
 import mysql.connector
-from datetime import datetime, time, timedelta , date
+from datetime import datetime, time, timedelta
 import time as t  # <- renamed to avoid conflict
 import requests
 import smtplib
@@ -19,14 +19,6 @@ db_config = {
     "database": "railway",
 }
 
-# db_config = {
-#     "host": "switchyard.proxy.rlwy.net",
-#     "user": "root",
-#     "port": 28085,
-#     "password": "NOtYUNawwodSrBfGubHhwKaFtWyGXQct",
-#     "database": "railway",
-# }
-
 # ================== SMS CONFIG ==================
 SMS_API_URL = "http://www.universalsmsadvertising.com/universalsmsapi.php"
 SMS_USER = "8960853914"
@@ -40,8 +32,7 @@ EMAIL_USER = "testwebservice71@gmail.com"
 EMAIL_PASS = "akuu vulg ejlg ysbt"
 
 # ================== TIMEZONE CONFIG ==================
-TZ = pytz.timezone("Asia/Kolkata")  # IST
-
+TZ = pytz.timezone("Asia/Singapore")  # Singapore timezone
 
 # ===================================================
 def build_message(ntf_typ, devnm):
@@ -104,29 +95,6 @@ def get_contact_info(device_id):
     try:
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor(dictionary=True)
-        
-        today = date.today()
-
-        # ---- Subscription Check First ----
-        cursor.execute("""
-            SELECT sh.*, msi.Package_Name
-            FROM Subcription_History sh
-            JOIN Master_Subscription_Info msi 
-              ON sh.Subscription_ID = msi.Subscription_ID
-            WHERE sh.Device_ID = %s
-              AND sh.Subscription_ID = 1
-              AND sh.Subcription_End_date >= %s
-            ORDER BY sh.ID DESC
-            LIMIT 1
-        """, (device_id, today))
-
-        subscription = cursor.fetchone()
-
-        print(f"DEBUG: Subscription for device {device_id} ->", subscription)
-
-        if not subscription:
-            return [], []   # Only 2 values
-        
         cursor.execute("""
             SELECT ORGANIZATION_ID, CENTRE_ID
             FROM master_device
@@ -146,11 +114,10 @@ def get_contact_info(device_id):
               AND CENTRE_ID_id = %s
         """, (org_id, centre_id))
         users_link = cursor.fetchall()
-        if not users_link:
+        user_ids = [u["USER_ID_id"] for u in users_link]
+        if not user_ids:
             return [], []
 
-        user_ids = [u["USER_ID_id"] for u in users_link]
-        print("user_ids")
         format_strings = ','.join(['%s'] * len(user_ids))
         query = f"""
             SELECT USER_ID, PHONE, EMAIL, SEND_SMS, SEND_EMAIL
@@ -160,17 +127,13 @@ def get_contact_info(device_id):
         """
         cursor.execute(query, tuple(user_ids))
         users = cursor.fetchall()
-
-        phones = [u["PHONE"] for u in users if u["SEND_SMS"] == 1]
-        emails = [u["EMAIL"] for u in users if u["SEND_EMAIL"] == 1]
-        print("Users fetched =>", users)
-        print("phones value", phones)
-        return phones, emails
+        phone_numbers = [u["PHONE"] for u in users if u["SEND_SMS"] == 1]
+        email_ids = [u["EMAIL"] for u in users if u["SEND_EMAIL"] == 1]
+        return phone_numbers, email_ids
 
     except Exception as e:
         print("❌ Error in get_contact_info:", e)
         return [], []
-
     finally:
         if 'cursor' in locals():
             cursor.close()
@@ -198,9 +161,7 @@ def check_and_notify():
             FROM iot_api_devicealarmlog
             WHERE IS_ACTIVE=1
         """)
-        
         alarms = cursor.fetchall()
-        print("Alarms",alarms)
         if not alarms:
             print("✅ No alarms found.")
             return
@@ -210,12 +171,6 @@ def check_and_notify():
         for alarm in alarms:
             alarm_id = alarm["ID"]
             devid = alarm["DEVICE_ID"]
-               # First get contact info
-            phones, emails = get_contact_info(devid)
-            print("phones value" )
-            if not phones and not emails:
-                print(f"⏹ Device {devid} skipped (no valid subscription)")
-                continue
             alarm_date = alarm["ALARM_DATE"]
             alarm_time = safe_time(alarm["ALARM_TIME"])
             raised_time = TZ.localize(datetime.combine(alarm_date, alarm_time))
@@ -224,7 +179,6 @@ def check_and_notify():
             first_sms_done = alarm["SMS_DATE"] is not None
             second_sms_done = second_notification_sent.get(alarm_id, False)
 
-            print("first_sms_sent",first_sms_done)
             # -------- FIRST NOTIFICATION --------
             if not first_sms_done and diff_seconds >= 60:
                 cursor.execute("SELECT device_name FROM master_device WHERE device_id=%s", (devid,))
@@ -250,9 +204,14 @@ def check_and_notify():
                     print(f"⚠️ No reading found for device {devnm}")
                     continue
 
+                currreading = reading_row["CURRENT_READING"]                
+                # ✅ Skip if reading is None
+                if currreading is None:
+                    print(f"⚠️ Skipping device {devnm} as current reading is NULL.")
+                    continue
+
                 upth = reading_row["UPPER_THRESHOLD"]
                 lowth = reading_row["LOWER_THRESHOLD"]
-                currreading = reading_row["CURRENT_READING"]
 
                 print(f"Device {devnm}: Lower={lowth}, Upper={upth}, Current={currreading}")
 
@@ -264,7 +223,6 @@ def check_and_notify():
                     ntf_typ = 7
 
                 message = build_message(ntf_typ, devnm)
-                print(message)
                 phones, emails = get_contact_info(devid)
 
                 for phone in phones:
@@ -308,9 +266,14 @@ def check_and_notify():
                     if not reading_row:
                         continue
 
+                    currreading = reading_row["CURRENT_READING"]
+                    
+                    # ✅ Skip if reading is None
+                    if currreading is None:
+                        print(f"⚠️ Skipping device {devnm} as current reading is NULL.")
+                        continue
                     upth = reading_row["UPPER_THRESHOLD"]
                     lowth = reading_row["LOWER_THRESHOLD"]
-                    currreading = reading_row["CURRENT_READING"]
 
                     print(f"Device {devnm} [Reminder]: Lower={lowth}, Upper={upth}, Current={currreading}")
 
@@ -336,9 +299,14 @@ def check_and_notify():
     except Exception as e:
         print("❌ Error in check_and_notify:", e)
 
+
 if __name__ == "__main__":
-        print("Starting Cron on local")
-        check_and_notify()
-        print("Done. Exting")
+    print("🚀 Starting notification check...")
+    check_and_notify()
+    print("✅ Notification check complete. Exiting now.")
 
-
+# if __name__ == "__main__":
+#     while True:
+#         check_and_notify()
+#         print("⏳ Waiting 3 minutes for next check...")
+#         t.sleep(3* 60)
