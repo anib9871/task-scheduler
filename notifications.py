@@ -97,7 +97,7 @@ def get_contact_info(device_id):
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
             SELECT ORGANIZATION_ID, CENTRE_ID
-            FROM master_device
+            FROM iot_api_masterdevice
             WHERE DEVICE_ID = %s
         """, (device_id,))
         device = cursor.fetchone()
@@ -181,7 +181,7 @@ def check_and_notify():
 
             # -------- FIRST NOTIFICATION --------
             if not first_sms_done and diff_seconds >= 60:
-                cursor.execute("SELECT device_name FROM master_device WHERE device_id=%s", (devid,))
+                cursor.execute("SELECT device_name FROM iot_api_masterdevice WHERE device_id=%s", (devid,))
                 row = cursor.fetchone()
                 devnm = row["device_name"] if row else f"Device-{devid}"
 
@@ -244,7 +244,7 @@ def check_and_notify():
                 first_sms_dt = TZ.localize(first_sms_dt)
                 diff_hours = (now - first_sms_dt).total_seconds() / 3600
                 if diff_hours >= 6:
-                    cursor.execute("SELECT device_name FROM master_device WHERE device_id=%s", (devid,))
+                    cursor.execute("SELECT device_name FROM iot_api_masterdevice WHERE device_id=%s", (devid,))
                     row = cursor.fetchone()
                     devnm = row["device_name"] if row else f"Device-{devid}"
 
@@ -253,7 +253,7 @@ def check_and_notify():
                             MP.UPPER_THRESHOLD,
                             MP.LOWER_THRESHOLD,
                             DRL.READING AS CURRENT_READING
-                        FROM master_device MD
+                        FROM iot_api_masterdevice MD
                         LEFT JOIN iot_api_devicesensorlink DSL ON DSL.DEVICE_ID = MD.DEVICE_ID
                         LEFT JOIN iot_api_sensorparameterlink SPL ON SPL.SENSOR_ID = DSL.SENSOR_ID
                         LEFT JOIN iot_api_masterparameter MP ON MP.PARAMETER_ID = SPL.PARAMETER_ID
@@ -304,10 +304,3 @@ if __name__ == "__main__":
     print("🚀 Starting notification check...")
     check_and_notify()
     print("✅ Notification check complete. Exiting now.")
-
-# if __name__ == "__main__":
-#     while True:
-#         check_and_notify()
-#         print("⏳ Waiting 3 minutes for next check...")
-#         t.sleep(3* 60)
-
