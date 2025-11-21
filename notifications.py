@@ -210,7 +210,7 @@ def check_and_notify():
                         MP.UPPER_THRESHOLD,
                         MP.LOWER_THRESHOLD,
                         DRL.READING AS CURRENT_READING
-                    FROM master_device MD
+                    FROM iot_api_masterdevice MD
                     LEFT JOIN iot_api_devicesensorlink DSL ON DSL.DEVICE_ID = MD.DEVICE_ID
                     LEFT JOIN iot_api_sensorparameterlink SPL ON SPL.SENSOR_ID = DSL.SENSOR_ID
                     LEFT JOIN iot_api_masterparameter MP ON MP.PARAMETER_ID = SPL.PARAMETER_ID
