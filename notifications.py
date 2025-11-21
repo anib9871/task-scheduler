@@ -5,6 +5,9 @@ import requests
 import smtplib
 from email.mime.text import MIMEText
 import pytz  # <- For timezone handling
+import os
+import sib_api_v3_sdk
+from sib_api_v3_sdk.rest import ApiException
 
 devid_for_sms = None
 phone_numbers = ""
@@ -74,26 +77,53 @@ def send_sms(phone, message):
         print("❌ SMS failed:", e)
 
 
-def send_email(subject, message, email_ids):
-    if not email_ids:
-        print("❌ No email recipients. Skipping.")
-        return
+# def send_email(subject, message, email_ids): ws working with gmail but not working in railway
+#     if not email_ids:
+#         print("❌ No email recipients. Skipping.")
+#         return
 
-    print("🔹 Sending Email...")
+#     print("🔹 Sending Email...")
+#     try:
+#         msg = MIMEText(message)
+#         msg["Subject"] = subject
+#         msg["From"] = EMAIL_USER
+#         msg["To"] = ", ".join(email_ids)
+
+#         server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+#         server.starttls()
+#         server.login(EMAIL_USER, EMAIL_PASS)
+#         server.sendmail(EMAIL_USER, email_ids, msg.as_string())
+#         server.quit()
+
+#         print("✅ Email sent successfully!")
+#     except Exception as e:
+#         print("❌ Email failed:", e)
+BREVO_API_KEY = "cGbUTq4L6mVM9nsZ"
+
+def send_email_brevo(to_email, subject, html_content):
+    print("📧 Sending Email via Brevo...")
+
+    BREVO_API_KEY = "cGbUTq4L6mVM9nsZ"
+
     try:
-        msg = MIMEText(message)
-        msg["Subject"] = subject
-        msg["From"] = EMAIL_USER
-        msg["To"] = ", ".join(email_ids)
+        configuration = sib_api_v3_sdk.Configuration()
+        configuration.api_key['api-key'] = BREVO_API_KEY
 
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
-        server.starttls()
-        server.login(EMAIL_USER, EMAIL_PASS)
-        server.sendmail(EMAIL_USER, email_ids, msg.as_string())
-        server.quit()
+        api_instance = sib_api_v3_sdk.TransactionalEmailsApi(
+            sib_api_v3_sdk.ApiClient(configuration)
+        )
 
-        print("✅ Email sent successfully!")
-    except Exception as e:
+        email = sib_api_v3_sdk.SendSmtpEmail(
+            to=[{"email": to_email}],
+            sender={"email": "yourgmail@gmail.com", "name": "Fertisense"},
+            subject=subject,
+            html_content=html_content
+        )
+
+        response = api_instance.send_transac_email(email)
+        print("✔ Email sent:", response)
+
+    except ApiException as e:
         print("❌ Email failed:", e)
 
 
@@ -249,7 +279,10 @@ def check_and_notify():
 
                 for phone in phones:
                     send_sms(phone, message)
-                send_email("IoT Alarm Notification", message, emails)
+
+                for em in emails:
+                    send_email_brevo(em, "IoT Alarm Notification", message)
+
 
                 now_ts = datetime.now(TZ)
 
@@ -320,7 +353,9 @@ def check_and_notify():
                     for phone in phones:
                         send_sms(phone, message)
 
-                    send_email("IoT Alarm Notification - Reminder", message, emails)
+                    for em in emails:
+                        send_email_brevo(em, "IoT Alarm Notification - Reminder", message)
+
 
                     second_notification_sent[alarm_id] = True
                     print(f"✅ Second notification sent for alarm {alarm_id}")
