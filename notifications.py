@@ -98,12 +98,12 @@ def send_sms(phone, message):
 #         print("✅ Email sent successfully!")
 #     except Exception as e:
 #         print("❌ Email failed:", e)
-BREVO_API_KEY = "cGbUTq4L6mVM9nsZ"
+#BREVO_API_KEY = "cGbUTq4L6mVM9nsZ"
 
 def send_email_brevo(to_email, subject, html_content):
     print("📧 Sending Email via Brevo...")
 
-    BREVO_API_KEY = "cGbUTq4L6mVM9nsZ"
+    BREVO_API_KEY = "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"
 
     try:
         configuration = sib_api_v3_sdk.Configuration()
@@ -115,7 +115,7 @@ def send_email_brevo(to_email, subject, html_content):
 
         email = sib_api_v3_sdk.SendSmtpEmail(
             to=[{"email": to_email}],
-            sender={"email": "yourgmail@gmail.com", "name": "Fertisense"},
+            sender={"email": "fertisenseiot@gmail.com", "name": "Fertisense"},
             subject=subject,
             html_content=html_content
         )
@@ -296,20 +296,26 @@ def check_and_notify():
                 conn.commit()
                 print(f"✅ First notification sent for alarm {alarm_id}")
 
-            # ================== SECOND NOTIFICATION ==================
-            elif first_sms_done and not second_sms_done:
+# ================== SECOND NOTIFICATION ==================
+            elif first_sms_done and alarm["EMAIL_TIME"] is None:
 
-                first_sms_dt = datetime.combine(alarm["SMS_DATE"], safe_time(alarm["SMS_TIME"]))
+                first_sms_dt = datetime.combine(
+                    alarm["SMS_DATE"], safe_time(alarm["SMS_TIME"])
+                )
                 first_sms_dt = TZ.localize(first_sms_dt)
                 diff_hours = (now - first_sms_dt).total_seconds() / 3600
 
                 if diff_hours >= 6:
 
-                    cursor.execute("SELECT device_name FROM iot_api_masterdevice WHERE device_id=%s", (devid,))
+                    cursor.execute(
+                        "SELECT device_name FROM iot_api_masterdevice WHERE device_id=%s",
+                        (devid,),
+                    )
                     row = cursor.fetchone()
                     devnm = row["device_name"] if row else f"Device-{devid}"
 
-                    cursor.execute("""
+                    cursor.execute(
+                        """
                         SELECT 
                             MP.UPPER_THRESHOLD,
                             MP.LOWER_THRESHOLD,
@@ -322,23 +328,21 @@ def check_and_notify():
                         WHERE MD.DEVICE_ID = %s
                         ORDER BY DRL.READING_DATE DESC, DRL.READING_TIME DESC
                         LIMIT 1
-                    """, (devid,))
+                        """,
+                        (devid,),
+                    )
 
                     reading_row = cursor.fetchone()
-
                     if not reading_row:
                         continue
 
                     currreading = reading_row["CURRENT_READING"]
-
                     if currreading is None:
                         print(f"⚠️ Skipping device {devnm} as current reading is NULL.")
                         continue
 
                     upth = reading_row["UPPER_THRESHOLD"]
                     lowth = reading_row["LOWER_THRESHOLD"]
-
-                    print(f"Device {devnm} [Reminder]: Lower={lowth}, Upper={upth}, Current={currreading}")
 
                     if currreading < lowth:
                         ntf_typ = 1
@@ -354,10 +358,22 @@ def check_and_notify():
                         send_sms(phone, message)
 
                     for em in emails:
-                        send_email_brevo(em, "IoT Alarm Notification - Reminder", message)
+                        send_email_brevo(
+                            em, "IoT Alarm Notification - Reminder", message
+                        )
 
+                    # Mark second notification done (NO NEW COLUMN USED)
+                    now_ts = datetime.now(TZ)
+                    cursor.execute(
+                        """
+                        UPDATE devicealarmlog
+                        SET EMAIL_TIME=%s
+                        WHERE ID=%s
+                        """,
+                        (now_ts.time(), alarm_id),
+                    )
 
-                    second_notification_sent[alarm_id] = True
+                    conn.commit()
                     print(f"✅ Second notification sent for alarm {alarm_id}")
 
         cursor.close()
