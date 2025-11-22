@@ -297,7 +297,7 @@ def check_and_notify():
                 print(f"✅ First notification sent for alarm {alarm_id}")
 
 # ================== SECOND NOTIFICATION ==================
-            elif first_sms_done and alarm["EMAIL_TIME"] is None:
+            elif first_sms_done and alarm["EMAIL_DATE"] is None:
 
                 first_sms_dt = datetime.combine(
                     alarm["SMS_DATE"], safe_time(alarm["SMS_TIME"])
@@ -367,7 +367,7 @@ def check_and_notify():
                     cursor.execute(
                         """
                         UPDATE devicealarmlog
-                        SET EMAIL_TIME=%s
+                        SET EMAIL_DATE=%s
                         WHERE ID=%s
                         """,
                         (now_ts.time(), alarm_id),
@@ -387,3 +387,4 @@ if __name__ == "__main__":
     print("🚀 Starting notification check...")
     check_and_notify()
     print("✅ Notification check complete. Exiting now.")
+
