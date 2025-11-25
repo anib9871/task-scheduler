@@ -36,7 +36,7 @@ SENDER_ID = "FRTLLP"
 # EMAIL_PASS = "akuu vulg ejlg ysbt"
 
 # ================== TIMEZONE CONFIG ==================
-TZ = pytz.timezone("Asia/Singapore")  # Singapore timezone
+TZ = pytz.timezone("Asia/Kolkata")  # Singapore timezone
 
 
 def build_message(ntf_typ, devnm):
@@ -434,3 +434,4 @@ if __name__ == "__main__":
     print("🚀 Starting notification check...")
     check_and_notify()
     print("✅ Notification check complete. Exiting now.")
+
