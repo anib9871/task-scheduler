@@ -419,4 +419,5 @@ def check_and_notify():
 if __name__ == "__main__":
     print("🚀 Starting notification check...")
     check_and_notify()
-    print("✅ Notification check complete. Exiting now."
+    print("✅ Notification check complete. Exiting now.")
+
