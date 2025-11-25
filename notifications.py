@@ -12,7 +12,8 @@ from sib_api_v3_sdk.rest import ApiException
 devid_for_sms = None
 phone_numbers = ""
 email_ids = ""
-
+device_name =""
+dev_reading =""
 # ================== DATABASE CONFIG ==================#
 db_config = {
     "host": "switchback.proxy.rlwy.net",
@@ -28,11 +29,11 @@ SMS_USER = "8960853914"
 SMS_PASS = "8960853914"
 SENDER_ID = "FRTLLP"
 
-# ================== EMAIL CONFIG ==================
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
-EMAIL_USER = "testwebservice71@gmail.com"
-EMAIL_PASS = "akuu vulg ejlg ysbt"
+# # ================== EMAIL CONFIG ==================
+# SMTP_SERVER = "smtp.gmail.com"
+# SMTP_PORT = 587
+# EMAIL_USER = "testwebservice71@gmail.com"
+# EMAIL_PASS = "akuu vulg ejlg ysbt"
 
 # ================== TIMEZONE CONFIG ==================
 TZ = pytz.timezone("Asia/Singapore")  # Singapore timezone
@@ -57,8 +58,9 @@ def build_message(ntf_typ, devnm):
         15: f"WARNING!! The VOC reading in {devnm} has gone above the higher limit. Please take necessary action- Regards Fertisense LLP",
         16: f"INFO!! The VOC levels are back to normal in {devnm}. No action is required - Regards Fertisense LLP",
     }
+    
     return messages.get(ntf_typ, f"Alert for {devnm} - Regards Fertisense LLP")
-
+    
 
 def send_sms(phone, message):
     print("🔹 Sending SMS...")
@@ -103,8 +105,10 @@ def send_sms(phone, message):
 def send_email_brevo(to_email, subject, html_content):
     print("📧 Sending Email via Brevo...")
 
-    BREVO_API_KEY = "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"
-
+    BREVO_API_KEY = os.getenv("BREVO_API_KEY")   # <--- NO HARD CODE
+    if not BREVO_API_KEY:
+        print("❌ ERROR: BREVO_API_KEY not found in environment variables!")
+        return
     try:
         configuration = sib_api_v3_sdk.Configuration()
         configuration.api_key['api-key'] = BREVO_API_KEY
@@ -204,7 +208,7 @@ def check_and_notify():
 
         # 🔥 UPDATED TABLE NAME
         cursor.execute("""
-            SELECT ID, DEVICE_ID, PARAMETER_ID, ALARM_DATE, ALARM_TIME, SMS_DATE, SMS_TIME, EMAIL_DATE
+            SELECT ID, DEVICE_ID, PARAMETER_ID, ALARM_DATE, ALARM_TIME, SMS_DATE, SMS_TIME, EMAIL_DATE, READING
             FROM devicealarmlog
             WHERE IS_ACTIVE = 1
         """)
@@ -221,7 +225,7 @@ def check_and_notify():
             devid = alarm["DEVICE_ID"]
             alarm_date = alarm["ALARM_DATE"]
             alarm_time = safe_time(alarm["ALARM_TIME"])
-
+            dev_reading = alarm["READING"]    
             raised_time = TZ.localize(datetime.combine(alarm_date, alarm_time))
             diff_seconds = (now - raised_time).total_seconds()
 
@@ -234,7 +238,7 @@ def check_and_notify():
                 cursor.execute("SELECT device_name FROM iot_api_masterdevice WHERE device_id=%s", (devid,))
                 row = cursor.fetchone()
                 devnm = row["device_name"] if row else f"Device-{devid}"
-
+                device_name = devnm
                 cursor.execute("""
                     SELECT 
                         MP.UPPER_THRESHOLD,
@@ -280,8 +284,27 @@ def check_and_notify():
                 for phone in phones:
                     send_sms(phone, message)
 
+
+                # for em in emails:
+                #     #email_subject = "IoT Alarm Notification for " & device_name & ". The current reading is  " & dev_reading
+                #     email_subject = "IoT Alarm Notification for " + device_name + ". The current reading is " + str(dev_reading)
+
+                #     send_email_brevo(em, email_subject, message)
                 for em in emails:
-                    send_email_brevo(em, "IoT Alarm Notification", message)
+                    email_subject = f"IoT Alarm Notification for {device_name} | Current reading: {dev_reading}"
+                    email_body = f"""
+                    <h2>⚠ IoT Alert Triggered</h2>
+                    <p><b>Device:</b> {device_name}</p>
+                    <p><b>Current Reading:</b> {dev_reading}</p>
+                    <p><b>Limits:</b> {lowth} - {upth}</p>
+                    <p>Please check the device immediately.</p>
+                    <p></p>
+                    <p></p>
+                    <p>Regards</p>
+                    <p>Team Fertisense.</p>
+                    """
+
+                    send_email_brevo(em, email_subject, email_body)
 
 
                 now_ts = datetime.now(TZ)
@@ -313,7 +336,7 @@ def check_and_notify():
                     )
                     row = cursor.fetchone()
                     devnm = row["device_name"] if row else f"Device-{devid}"
-
+                    device_name = devnm
                     cursor.execute(
                         """
                         SELECT 
@@ -356,11 +379,21 @@ def check_and_notify():
 
                     for phone in phones:
                         send_sms(phone, message)
-
                     for em in emails:
-                        send_email_brevo(
-                            em, "IoT Alarm Notification - Reminder", message
-                        )
+                        email_subject = f"IoT Alarm Notification for {device_name} | Current reading: {dev_reading}"
+                        email_body = f"""
+                        <h2>⚠ IoT Alert Triggered</h2>
+                        <p><b>Device:</b> {device_name}</p>
+                        <p><b>Current Reading:</b> {dev_reading}</p>
+                        <p><b>Limits:</b> {lowth} - {upth}</p>
+                        <p>Please check the device immediately.</p>
+                        <p></p>
+                        <p></p>
+                        <p>Regards</p>
+                        <p>Team Fertisense.</p>
+                        """
+
+                    send_email_brevo(em, email_subject, email_body)
 
                     # Mark second notification done (NO NEW COLUMN USED)
                     now_ts = datetime.now(TZ)
@@ -386,5 +419,4 @@ def check_and_notify():
 if __name__ == "__main__":
     print("🚀 Starting notification check...")
     check_and_notify()
-    print("✅ Notification check complete. Exiting now.")
-
+    print("✅ Notification check complete. Exiting now."
