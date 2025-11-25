@@ -292,7 +292,14 @@ def check_and_notify():
 
                 #     send_email_brevo(em, email_subject, message)
                 for em in emails:
-                    email_subject = f"IoT Alarm Notification for {device_name} | Current reading: {dev_reading}"
+                    if currreading > upth:
+                        email_subject = f"IoT Alarm Notification for {device_name} | Current reading is : {dev_reading} and it is HIGHER then normal"
+                    elif currreading < lowth:    
+                        email_subject = f"IoT Alarm Notification for {device_name} | Current reading is : {dev_reading} and it is LOWER then normal"
+                    else:
+                        # NORMAL CONDITION → No mail
+                        continue  
+                    
                     email_body = f"""
                     <h2>⚠ IoT Alert Triggered</h2>
                     <p><b>Device:</b> {device_name}</p>
@@ -381,7 +388,13 @@ def check_and_notify():
                     for phone in phones:
                         send_sms(phone, message)
                     for em in emails:
-                        email_subject = f"IoT Alarm Notification for {device_name} | Current reading: {dev_reading}"
+                        if currreading > upth:
+                            email_subject = f"IoT Alarm Notification for {device_name} | Current reading is : {dev_reading} and it is HIGHER then normal"
+                        elif currreading < lowth:    
+                            email_subject = f"IoT Alarm Notification for {device_name} | Current reading is : {dev_reading} and it is LOWER then normal"
+                        else:
+                            # NORMAL CONDITION → No mail
+                            continue  
                         email_body = f"""
                         <h2>⚠ IoT Alert Triggered</h2>
                         <p><b>Device:</b> {device_name}</p>
@@ -421,9 +434,3 @@ if __name__ == "__main__":
     print("🚀 Starting notification check...")
     check_and_notify()
     print("✅ Notification check complete. Exiting now.")
-
-
-
-
-
-
