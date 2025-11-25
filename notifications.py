@@ -233,7 +233,8 @@ def check_and_notify():
             second_sms_done = second_notification_sent.get(alarm_id, False)
 
             # ================== FIRST NOTIFICATION ==================
-            if not first_sms_done and diff_seconds >= 120:
+            if not first_sms_done and 120 <= diff_seconds <= 420:
+                print("⏳ FIRST SEND CONDITIONS MET")
 
                 cursor.execute("SELECT device_name FROM iot_api_masterdevice WHERE device_id=%s", (devid,))
                 row = cursor.fetchone()
@@ -420,6 +421,7 @@ if __name__ == "__main__":
     print("🚀 Starting notification check...")
     check_and_notify()
     print("✅ Notification check complete. Exiting now.")
+
 
 
 
