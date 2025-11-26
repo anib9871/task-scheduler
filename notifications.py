@@ -259,6 +259,7 @@ def check_and_notify():
 
                 message = build_message(ntf_typ, devnm)
                 phones, emails = get_contact_info(devid)
+                phones= list(set(phones))
                 
                 unique_phones= list(set(phones))
                 for phone in unique_phones:
@@ -420,3 +421,4 @@ if __name__ == "__main__":
     print("🚀 Starting notification check...")
     check_and_notify()
     print("✅ Notification check complete. Exiting now.")
+
