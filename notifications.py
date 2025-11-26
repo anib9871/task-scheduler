@@ -79,28 +79,6 @@ def send_sms(phone, message):
         print("❌ SMS failed:", e)
 
 
-# def send_email(subject, message, email_ids): ws working with gmail but not working in railway
-#     if not email_ids:
-#         print("❌ No email recipients. Skipping.")
-#         return
-
-#     print("🔹 Sending Email...")
-#     try:
-#         msg = MIMEText(message)
-#         msg["Subject"] = subject
-#         msg["From"] = EMAIL_USER
-#         msg["To"] = ", ".join(email_ids)
-
-#         server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
-#         server.starttls()
-#         server.login(EMAIL_USER, EMAIL_PASS)
-#         server.sendmail(EMAIL_USER, email_ids, msg.as_string())
-#         server.quit()
-
-#         print("✅ Email sent successfully!")
-#     except Exception as e:
-#         print("❌ Email failed:", e)
-#BREVO_API_KEY = "cGbUTq4L6mVM9nsZ"
 
 def send_email_brevo(to_email, subject, html_content):
     print("📧 Sending Email via Brevo...")
@@ -231,7 +209,7 @@ def check_and_notify():
 
             first_sms_done = alarm["SMS_DATE"] is not None
             second_sms_done = second_notification_sent.get(alarm_id, False)
-
+            is_active = int(alarm.get("IS_ACTIVE", 0))
             # ================== FIRST NOTIFICATION ==================
             if not first_sms_done and diff_seconds > 120:
                 print("⏳ FIRST SEND CONDITIONS MET")
@@ -328,8 +306,8 @@ def check_and_notify():
                 print(f"✅ First notification sent for alarm {alarm_id}")
 
 # ================== SECOND NOTIFICATION ==================
-            elif first_sms_done and alarm["EMAIL_DATE"] is None:
-
+            #elif first_sms_done and alarm["EMAIL_DATE"] is None:
+            elif first_sms_done and is_active == 1 and not second_sms_done:
                 first_sms_dt = datetime.combine(
                     alarm["SMS_DATE"], safe_time(alarm["SMS_TIME"])
                 )
@@ -434,4 +412,3 @@ if __name__ == "__main__":
     print("🚀 Starting notification check...")
     check_and_notify()
     print("✅ Notification check complete. Exiting now.")
-
