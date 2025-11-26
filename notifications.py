@@ -1,3 +1,4 @@
+import traceback
 import mysql.connector
 from datetime import datetime, time, timedelta
 import time as t  # <- renamed to avoid conflict
@@ -11,6 +12,7 @@ from sib_api_v3_sdk.rest import ApiException
 
 devid_for_sms = None
 phone_numbers = ""
+uni_phones =""
 email_ids = ""
 device_name =""
 dev_reading =""
@@ -152,10 +154,13 @@ def get_contact_info(device_id):
         users = cursor.fetchall()
 
         phone_numbers = [u["PHONE"] for u in users if u["SEND_SMS"] == 1]
+        print("Availablephone numbers",phone_numbers)
+        #uni_phones = list(set(phone_numbers))
         email_ids = [u["EMAIL"] for u in users if u["SEND_EMAIL"] == 1]
+       
 
         return phone_numbers, email_ids
-
+        
     except Exception as e:
         print("❌ Error in get_contact_info:", e)
         return [], []
@@ -191,7 +196,7 @@ def check_and_notify():
             WHERE IS_ACTIVE = 1
         """)
         alarms = cursor.fetchall()
-
+        print("Alarms",alarms)
         if not alarms:
             print("✅ No alarms found.")
             return
@@ -210,8 +215,11 @@ def check_and_notify():
             first_sms_done = alarm["SMS_DATE"] is not None
             second_sms_done = second_notification_sent.get(alarm_id, False)
             is_active = int(alarm.get("IS_ACTIVE", 0))
+            print("just checking for time elapsed after alarm initiation")
+            print("first sms done boolean check",first_sms_done)
+            print("diff seconds",diff_seconds)
             # ================== FIRST NOTIFICATION ==================
-            if not first_sms_done and diff_seconds > 120:
+            if not first_sms_done and diff_seconds > 180:
                 print("⏳ FIRST SEND CONDITIONS MET")
 
                 cursor.execute("SELECT device_name FROM iot_api_masterdevice WHERE device_id=%s", (devid,))
@@ -259,9 +267,25 @@ def check_and_notify():
 
                 message = build_message(ntf_typ, devnm)
                 phones, emails = get_contact_info(devid)
-                phones= list(set(phones))
                 
-                unique_phones= list(set(phones))
+                # ---- FIX START: Normalize all phone numbers properly ----
+                flat_phones = []
+
+                for p in phones:
+                    if p:  # ignore None
+                        # each p may be '7355383021,8960853911'
+                        parts = p.split(",")
+                        for part in parts:
+                            num = part.strip()
+                            if num:
+                                flat_phones.append(num)
+
+                # Deduplicate final list
+                unique_phones = list(set(flat_phones))
+
+                print("Unique phone numbers:", unique_phones)
+                # ---- FIX END ----
+
                 for phone in unique_phones:
                     send_sms(phone, message)
                 # for phone in phones:
@@ -367,18 +391,32 @@ def check_and_notify():
                     message = build_message(ntf_typ, devnm)
                     phones, emails = get_contact_info(devid)
 
-                    # for phone in phones:
-                    #     send_sms(phone, message)
-                    unique_phones= list(set(phones))
+                    # ---- FIX START: Normalize all phone numbers properly ----
+                    flat_phones = []
+
+                    for p in phones:
+                        if p:  # ignore None
+                            # each p may be '7355383021,8960853911'
+                            parts = p.split(",")
+                            for part in parts:
+                                num = part.strip()
+                                if num:
+                                    flat_phones.append(num)
+
+                    # Deduplicate final list
+                    unique_phones = list(set(flat_phones))
+
+                    print("Unique phone numbers:", unique_phones)
+                    # ---- FIX END ----
                     for phone in unique_phones:
                         send_sms(phone, message)
 
 
                     for em in emails:
                         if currreading > upth:
-                            email_subject = f"IoT Alarm Notification for {device_name} | Current reading is : {dev_reading} and it is HIGHER then normal"
+                            email_subject = f"IoT Alarm Notification (2nd Notification) for {device_name} | Current reading is : {dev_reading} and it is HIGHER then normal"
                         elif currreading < lowth:    
-                            email_subject = f"IoT Alarm Notification for {device_name} | Current reading is : {dev_reading} and it is LOWER then normal"
+                            email_subject = f"IoT Alarm Notification (2nd Notification) for {device_name} | Current reading is : {dev_reading} and it is LOWER then normal"
                         else:
                             # NORMAL CONDITION → No mail
                             continue  
@@ -409,11 +447,13 @@ def check_and_notify():
 
                     conn.commit()
                     print(f"✅ Second notification sent for alarm {alarm_id}")
-
+            else:
+                print("Elapsed time",diff_seconds)
         cursor.close()
         conn.close()
 
     except Exception as e:
+        traceback.print_exc()
         print("❌ Error in check_and_notify:", e)
 
 
@@ -421,4 +461,3 @@ if __name__ == "__main__":
     print("🚀 Starting notification check...")
     check_and_notify()
     print("✅ Notification check complete. Exiting now.")
-
