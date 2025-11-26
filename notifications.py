@@ -259,9 +259,12 @@ def check_and_notify():
 
                 message = build_message(ntf_typ, devnm)
                 phones, emails = get_contact_info(devid)
-
-                for phone in phones:
+                
+                unique_phones= list(set(phones))
+                for phone in unique_phones:
                     send_sms(phone, message)
+                # for phone in phones:
+                #     send_sms(phone, message)
 
 
                 # for em in emails:
@@ -363,8 +366,13 @@ def check_and_notify():
                     message = build_message(ntf_typ, devnm)
                     phones, emails = get_contact_info(devid)
 
-                    for phone in phones:
+                    # for phone in phones:
+                    #     send_sms(phone, message)
+                    unique_phones= list(set(phones))
+                    for phone in unique_phones:
                         send_sms(phone, message)
+
+
                     for em in emails:
                         if currreading > upth:
                             email_subject = f"IoT Alarm Notification for {device_name} | Current reading is : {dev_reading} and it is HIGHER then normal"
