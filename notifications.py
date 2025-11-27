@@ -1,6 +1,6 @@
 import traceback
 import mysql.connector
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta,date
 import time as t  # <- renamed to avoid conflict
 import requests
 import smtplib
@@ -116,6 +116,28 @@ def get_contact_info(device_id):
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor(dictionary=True)
 
+        today = date.today()
+
+        # ---- Subscription Check First ----
+        cursor.execute("""
+            SELECT sh.*, msi.Package_Name
+            FROM Subcription_History sh
+            JOIN Master_Subscription_Info msi 
+              ON sh.Subscription_ID = msi.Subscription_ID
+            WHERE sh.Device_ID = %s
+              AND sh.Subscription_ID = 1
+              AND sh.Subcription_End_date >= %s
+            ORDER BY sh.ID DESC
+            LIMIT 1
+        """, (device_id, today))
+
+        subscription = cursor.fetchone()
+
+        print(f"DEBUG: Subscription for device {device_id} ->", subscription)
+
+        if not subscription:
+            return [], []   # Only 2 values
+
         cursor.execute("""
             SELECT ORGANIZATION_ID, CENTRE_ID
             FROM iot_api_masterdevice
@@ -219,7 +241,7 @@ def check_and_notify():
             print("first sms done boolean check",first_sms_done)
             print("diff seconds",diff_seconds)
             # ================== FIRST NOTIFICATION ==================
-            if not first_sms_done and diff_seconds > 180:
+            if not first_sms_done and diff_seconds > 60:
                 print("⏳ FIRST SEND CONDITIONS MET")
 
                 cursor.execute("SELECT device_name FROM iot_api_masterdevice WHERE device_id=%s", (devid,))
